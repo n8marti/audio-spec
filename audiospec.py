@@ -2,14 +2,11 @@
 """Read and parse info from audio files."""
 
 import ffmpeg
-import os
 import sys
 import wave
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import subprocess
-import shutil
 
 from pathlib import Path
 from scipy.fft import irfft, rfft, rfftfreq
