@@ -1,18 +1,15 @@
-This Python script let's you create a spectrogram from most type of audio files.
+# Audio Spectrogram
 
-The script requires [ffmpeg](https://ffmpeg.org/) to be installed and requires the following Python libraries: numpy, matplotlib, wave. You can install these requirements by running:
+Create a spectrogram from most type of audio files.
 
-`pip3 install -r requirements.txt`
+The script requires [ffmpeg](https://ffmpeg.org/) to be installed, as well as the packages found in requirements.txt:
 
-It has been tested on Mac OSX 10.12.6.
+```shell
+$ pip3 install -r requirements.txt
+```
 
 Once installed, make sure to add the script to your path. After this, you can create a spectrogram from the command line by running:
 
-`pyspec.py myAudioFile.mp3`
-
-ffmpeg works with almost any audio file.
-
-Screenshot:
-
-<img src="exampleSpectrogram.png" width="600">
-
+```shell
+$ audiospec.py myAudioFile.wav
+```
