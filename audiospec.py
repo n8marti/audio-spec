@@ -2,6 +2,7 @@
 """Read and parse info from audio files."""
 
 import ffmpeg
+import math
 import sys
 import wave
 import numpy as np
@@ -193,15 +194,20 @@ def cut_high_freqs(spectrum, frequencies, max=8000):
     #print(len(frequencies), len(lower_np_frequencies))
     return lower_np_spectrum, lower_np_frequencies
 
-def subtract_bg_noise(np_spectrum, np_freqs):
+def subtract_bg_noise(np_spectrum, np_freqs, np_times):
     """Reduce all amplitudes of each frequency by that frequency's minimum amplitude."""
     # Define "background noise":
-    #   1. For a given spectrum, the minimum amplitude at each frequency.
-    #   2. For a given wave, a relative maximum amplitude seen throughout the clip.
-    #   3. For a given spectrum, a roughly constant amplitude at each frequency.
+    #   + For a given spectrum, any amplitude below the average at each frequency.
+    #   - For a given spectrum, the minimum amplitude at each frequency.
+    #   - For a given wave, a relative maximum amplitude seen throughout the clip.
     for i, row in enumerate(np_spectrum):
+        avg_amp = np.average(row)
+        min_amp = min(row)
         for j, amp in enumerate(row):
-            np_spectrum[i, j] = amp - min(row)
+            if amp < avg_amp:
+                np_spectrum[i, j] = 0
+        #for j, amp in enumerate(row):
+        #    np_spectrum[i, j] = amp - bg
     return np_spectrum
 
 def show_spectrum_properties(np_spectrum, np_freqs, np_times):
@@ -218,12 +224,23 @@ def show_spectrum_properties(np_spectrum, np_freqs, np_times):
 
     print(f"Duration: {duration} s")
 
-def normalize_spectrum(np_spectrum, np_freqs):
+def print_term_spectrogram(np_spectrum):
+    for r in np_spectrum[::-1]:
+        for a in r:
+            if a == 0:
+                print('   ', end='')
+            elif a < 500:
+                print('_  ', end='')
+            else:
+                print('#  ', end='')
+        print()
+
+def normalize_spectrum(np_spectrum, np_freqs, np_times):
     """Normalize specturm by applying desired filters."""
     # Trim out high frequencies (> 8 kHz).
     np_spectrum, np_freqs = cut_high_freqs(np_spectrum, np_freqs)
     # Trim out background white noise.
-    np_spectrum = subtract_bg_noise(np_spectrum, np_freqs)
+    np_spectrum = subtract_bg_noise(np_spectrum, np_freqs, np_times)
 
     return np_spectrum, np_freqs
 
@@ -268,6 +285,15 @@ def generate_plots(input_file, np_frames, frame_rate):
 
     return np_spectrum, np_freqs, np_times
 
+def get_silence_status(time_frame):
+    """Determine if there is silence at the given time frame."""
+    # Silence:
+    #   1. The amplitude at every frequency is below a defined threshold.
+    max_amp = max(time_frame['amplitudes'])
+    max_db = 20 * math.log(max_amp)
+    return max_amp
+
+
 
 # Read arguments; set global variables.
 startfr = None
@@ -297,7 +323,21 @@ np_frames = np.frombuffer(byte_frames[startfr:endfr], dtype='int16')
 np_spectrum, np_freqs, np_times = generate_plots(input_file, np_frames, file_info.framerate)
 
 # Normalize specturm by applying filters.
-np_spectrum, np_freqs = normalize_spectrum(np_spectrum, np_freqs)
+np_spectrum, np_freqs = normalize_spectrum(np_spectrum, np_freqs, np_times)
+
+#print_term_spectrogram(np_spectrum)
 
 # Output descriptive properties of spectrum.
 show_spectrum_properties(np_spectrum, np_freqs, np_times)
+exit()
+# Organize data into dictionary.
+time_frames = {t: {} for t in np_times}
+for i, t in enumerate(np_times):
+    time_frames[t]['amplitudes'] = [row[i] for row in np_spectrum]
+
+i = 0
+for t, data in time_frames.items():
+    if i > 110 and i < 130:
+        max_db = get_silence_status(data)
+        print(f"{round(t, 3)}:\t{round(max_db, 1)}")
+    i += 1
