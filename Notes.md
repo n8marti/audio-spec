@@ -7,7 +7,7 @@
 
 ## Acoustic properties of a feature (not phoneme, which is distinguished by multiple features)
 - vowel/consonant
-- voicing/aspiration
+- voicing/aspiration (voiced: V is True, aspir.: V is False, S is False)
 - formant frequencies: F1 > pharyngeal cavity, F2 > front cavity, [Hz]
   - F3 > vocal folds, but not needed for distinguishing between vowels
 - start time [s]
