@@ -96,12 +96,25 @@ def plot_spectrogram(frame_rate, np_frames, input_file, output_file):
     plt_specgram.xlabel('Time (seconds)')
     plt_specgram.ylabel('Frequency (Hz)')
 
+    '''
+    ### This doesn't result in a "narrow" enough bandwidth; i.e. the frequencies
     # Set NFFT so that there are ~100 columns per second of audio.
+    #       have too much resolution and each formant is split into multiple
+    #       bands.
     columns_per_sec = 100   # desired horizontal resolution
     noverlap = 500          # default: 128; correlates with vertical resolution
     # matplotlib says that an NFFT that is a power of 2 is most efficient,
     #   but how would I round the calculation to the nearest power of 2?
-    NFFT = int(frame_rate / columns_per_sec + noverlap)
+    NFFT = int(frame_rate / columns_per_sec + noverlap) # NFFT = 941
+    '''
+    # If NFFT is too high, then there the horizontal (frequency) resolution is
+    #   too fine, and there are multiple bands for each formant. However, if
+    #   NFFT is too low, then the whole image is rather blurry and even the
+    #   formants are not well differentiated (i.e. at the fault vaules for NFFT
+    #   and noverlap). noverlap that is half of NFFT seems to minimize background
+    #   noise, as well.
+    noverlap = 256          # default: 128
+    NFFT = 512              # default: 256
 
     # Create the plot.
     spectrum, frequencies, times, img = plt_specgram.specgram(
@@ -195,7 +208,7 @@ def cut_high_freqs(spectrum, frequencies, max=8000):
     return lower_np_spectrum, lower_np_frequencies
 
 def subtract_bg_noise(np_spectrum, np_freqs, np_times):
-    """Reduce all amplitudes of each frequency by that frequency's minimum amplitude."""
+    """Reduce the amplitudes of each block deemed to be noise."""
     # Define "background noise":
     #   + For a given spectrum, any amplitude below the average at each frequency.
     #   - For a given spectrum, the minimum amplitude at each frequency.
@@ -206,8 +219,6 @@ def subtract_bg_noise(np_spectrum, np_freqs, np_times):
         for j, amp in enumerate(row):
             if amp < avg_amp:
                 np_spectrum[i, j] = 0
-        #for j, amp in enumerate(row):
-        #    np_spectrum[i, j] = amp - bg
     return np_spectrum
 
 def show_spectrum_properties(np_spectrum, np_freqs, np_times):
@@ -218,21 +229,45 @@ def show_spectrum_properties(np_spectrum, np_freqs, np_times):
     max_amp_raw = max(np_spectrum.flat)
     min_amp_raw = min(np_spectrum.flat)
 
-    # TODO: Irrelevant: this just picks the highest from the scale, not from data.
-    max_freq = round(max(np_freqs), 0)
-    min_freq = round(min(np_freqs), 0)
-
     print(f"Duration: {duration} s")
 
-def print_term_spectrogram(np_spectrum):
-    for r in np_spectrum[::-1]:
+def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames=False):
+    """Print out a basic spectrogram in the terminal for debugging."""
+    for ri, r in enumerate(np_spectrum[::-1]):
+        # Print frequency scale item.
+        if ri % 2 == 0:
+            print(f"{int(np_freqs[len(np_freqs) - ri - 1] / 1000)}K ", end='')
+        else:
+            print('   ', end='')
+        # Print frequency rows.
         for a in r:
             if a == 0:
                 print('   ', end='')
             elif a < 500:
+                print('.  ', end='')
+            elif a < BASE_AMPLITUDE:
                 print('_  ', end='')
             else:
                 print('#  ', end='')
+        print()
+    # Print time scale.
+    dec_places = 1
+    shift = 5 / 10 ** ( dec_places + 1 )
+    print('  ', end='')
+    for i, t in enumerate(np_times):
+        if i % 2 == 0:
+            if t < shift:
+                shift = 0
+            print(f"{round(t - shift, dec_places)}   ", end='')
+    print()
+    if time_frames:
+        # Print evaluated properties.
+        print('\nV: ', end='')
+        for time_frame in time_frames.values():
+            if time_frame['vocalization'] == True:
+                print('T  ', end='')
+            else:
+                print('F  ', end='')
         print()
 
 def normalize_spectrum(np_spectrum, np_freqs, np_times):
@@ -285,17 +320,39 @@ def generate_plots(input_file, np_frames, frame_rate):
 
     return np_spectrum, np_freqs, np_times
 
+def get_amplitudes(time_frame, np_spectrum):
+    """Add the amplitude at each frequency to the given time frame."""
+    time_frame['amplitudes'] = [row[time_frame['index']] for row in np_spectrum]
+    return time_frame
+
 def get_silence_status(time_frame):
     """Determine if there is silence at the given time frame."""
     # Silence:
     #   1. The amplitude at every frequency is below a defined threshold.
-    max_amp = max(time_frame['amplitudes'])
-    max_db = 20 * math.log(max_amp)
-    return max_amp
+    for amp in time_frame['amplitudes']:
+        if amp > 0:
+            time_frame['silence'] = False
+            return time_frame
+    time_frame['silence'] = True
+    return time_frame
 
+def get_vocalization_status(time_frame, np_freqs):
+    """Determine if there is vocalization at the given time frame."""
+    # "Vocalization" means "sufficient amplitude in the F1-F3 frequency range".
+    #   This range is about 100 Hz to 2500 Hz for F1-F2
+    #   But maybe it's best to only consider F1, between 100 Hz and 800-1000 Hz.
+    for i, freq in enumerate(np_freqs):
+        if freq > 500 and freq < 1000:
+            if time_frame['amplitudes'][i] > BASE_AMPLITUDE:
+                time_frame['vocalization'] = True
+                return time_frame
+            else:
+                time_frame['vocalization'] = False
+    return time_frame
 
 
 # Read arguments; set global variables.
+BASE_AMPLITUDE = 20000  # empirical number based on testing. What unit is it?!
 startfr = None
 endfr = None
 if len(sys.argv) > 1:
@@ -311,33 +368,33 @@ if len(sys.argv) > 1:
 
 if len(sys.argv) > 2:
     endsec = float(sys.argv[-1])
-    endfr = int(endsec * file_info.framerate * file_info.sampwidth)
+    endfr = int(endsec * file_info.framerate) # * file_info.sampwidth)
 if len(sys.argv) == 4:
     startsec = float(sys.argv[2])
-    startfr = int(startsec * file_info.framerate * file_info.sampwidth)
+    startfr = int(startsec * file_info.framerate) # * file_info.sampwidth)
 
-# Convert byte_frames to np_frames, limited by start and end args.
-np_frames = np.frombuffer(byte_frames[startfr:endfr], dtype='int16')
+# Convert byte_frames to np_frames, crop according to start and end args.
+np_frames = np.frombuffer(byte_frames, dtype='int16')
+np_frames = np_frames[startfr:endfr]
 
 # Generate illustrative plots; return spectrum.
 np_spectrum, np_freqs, np_times = generate_plots(input_file, np_frames, file_info.framerate)
-
 # Normalize specturm by applying filters.
 np_spectrum, np_freqs = normalize_spectrum(np_spectrum, np_freqs, np_times)
 
-#print_term_spectrogram(np_spectrum)
-
 # Output descriptive properties of spectrum.
 show_spectrum_properties(np_spectrum, np_freqs, np_times)
-exit()
-# Organize data into dictionary.
-time_frames = {t: {} for t in np_times}
-for i, t in enumerate(np_times):
-    time_frames[t]['amplitudes'] = [row[i] for row in np_spectrum]
 
-i = 0
-for t, data in time_frames.items():
-    if i > 110 and i < 130:
-        max_db = get_silence_status(data)
-        print(f"{round(t, 3)}:\t{round(max_db, 1)}")
-    i += 1
+# Organize data into dictionary.
+time_frames = {t: {'index': i} for i, t in enumerate(np_times)}
+# Add amplitudes to dictionary.
+for t, time_frame in time_frames.items():
+    time_frames[t] = get_amplitudes(time_frame, np_spectrum)
+# Add silence status to dictionary.
+for t, time_frame in time_frames.items():
+    time_frames[t] = get_silence_status(time_frame)
+# Add vocalization status to dictionary.
+for t, time_frame in time_frames.items():
+    time_frames[t] = get_vocalization_status(time_frame, np_freqs)
+
+print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames)
