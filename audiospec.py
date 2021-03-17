@@ -245,7 +245,7 @@ def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames=Fals
                 print('   ', end='')
             elif a < 500:
                 print('.  ', end='')
-            elif a < BASE_AMPLITUDE:
+            elif a < VOICE_BASE_AMP:
                 print('_  ', end='')
             else:
                 print('#  ', end='')
@@ -262,7 +262,17 @@ def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames=Fals
     print()
     if time_frames:
         # Print evaluated properties.
-        print('\nV: ', end='')
+        print()
+        # - silence
+        print('S: ', end='')
+        for time_frame in time_frames.values():
+            if time_frame['silence'] == True:
+                print('T  ', end='')
+            else:
+                print('F  ', end='')
+        print()
+        # - vocalization
+        print('V: ', end='')
         for time_frame in time_frames.values():
             if time_frame['vocalization'] == True:
                 print('T  ', end='')
@@ -325,12 +335,16 @@ def get_amplitudes(time_frame, np_spectrum):
     time_frame['amplitudes'] = [row[time_frame['index']] for row in np_spectrum]
     return time_frame
 
-def get_silence_status(time_frame):
+def get_silence_status(time_frame, np_freqs):
     """Determine if there is silence at the given time frame."""
     # Silence:
     #   1. The amplitude at every frequency is below a defined threshold.
-    for amp in time_frame['amplitudes']:
-        if amp > 0:
+    for i, amp in enumerate(time_frame['amplitudes']):
+        if np_freqs[i] < VOICE_MAX_FREQ:
+            amp_min = VOICE_BASE_AMP
+        else:
+            amp_min = ASPIR_BASE_AMP
+        if amp > amp_min:
             time_frame['silence'] = False
             return time_frame
     time_frame['silence'] = True
@@ -342,8 +356,8 @@ def get_vocalization_status(time_frame, np_freqs):
     #   This range is about 100 Hz to 2500 Hz for F1-F2
     #   But maybe it's best to only consider F1, between 100 Hz and 800-1000 Hz.
     for i, freq in enumerate(np_freqs):
-        if freq > 500 and freq < 1000:
-            if time_frame['amplitudes'][i] > BASE_AMPLITUDE:
+        if freq > VOICE_MIN_FREQ and freq < VOICE_MAX_FREQ:
+            if time_frame['amplitudes'][i] > VOICE_BASE_AMP:
                 time_frame['vocalization'] = True
                 return time_frame
             else:
@@ -352,7 +366,10 @@ def get_vocalization_status(time_frame, np_freqs):
 
 
 # Read arguments; set global variables.
-BASE_AMPLITUDE = 20000  # empirical number based on testing. What unit is it?!
+VOICE_MIN_FREQ = 500    # should be more like 200 according to vowel quad.; needs testing
+VOICE_MAX_FREQ = 1000   # ref: vowel quadrilateral
+VOICE_BASE_AMP = 20000  # empirical number based on testing. What unit is it?!
+ASPIR_BASE_AMP = 500    # also empirical
 startfr = None
 endfr = None
 if len(sys.argv) > 1:
@@ -392,7 +409,7 @@ for t, time_frame in time_frames.items():
     time_frames[t] = get_amplitudes(time_frame, np_spectrum)
 # Add silence status to dictionary.
 for t, time_frame in time_frames.items():
-    time_frames[t] = get_silence_status(time_frame)
+    time_frames[t] = get_silence_status(time_frame, np_freqs)
 # Add vocalization status to dictionary.
 for t, time_frame in time_frames.items():
     time_frames[t] = get_vocalization_status(time_frame, np_freqs)

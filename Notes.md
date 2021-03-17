@@ -16,7 +16,7 @@
 
 ## Acoustic properties of a time slice of audio
 - [x] silence: True / False
-- [ ] vocalization: True / False
+- [x] vocalization: True / False
 - [ ] primary frequencies: F1, F2 [Hz] (consider F3)
 
 
