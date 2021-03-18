@@ -6,18 +6,23 @@
 - pace [vowels/sec]?
 
 ## Acoustic properties of a feature (not phoneme, which is distinguished by multiple features)
-- vowel/consonant
-- voicing/aspiration (voiced: V is True, aspir.: V is False, S is False)
-- formant frequencies: F1 > pharyngeal cavity, F2 > front cavity, [Hz]
+- [ ] separators
+  - [x] silence
+  - [ ] switch between consonant/vowel & vice versa
+  - [ ] formant changes (dipthongs)
+- [ ] ID vowel vs consonant
+- [ ] voicing/aspiration (voiced: V is True; aspir.: V is False, S is False)
+- [x] formant frequencies: F1 > pharyngeal cavity, F2 > front cavity, [Hz]
   - F3 > vocal folds, but not needed for distinguishing between vowels
-- start time [s]
-- end time [s]
-- length/duration [s]
+- [ ] length/duration [s]
+  - [ ] start time [s]
+  - [ ] end time [s]
 
 ## Acoustic properties of a time slice of audio
 - [x] silence: True / False
 - [x] vocalization: True / False
-- [ ] primary frequencies: F1, F2 [Hz] (consider F3)
+- [x] aspiration: True / False
+- [x] primary frequencies: F1, F2 [Hz] (consider F3)
 
 
 # General research
@@ -25,7 +30,7 @@
 http://www.linguisticsnetwork.com/the-basics-about-acoustic-phonetics/
 >The majority of human sounds falls between 250-4000 Hz
 >
->Formants are the the crest, or spectral peaks of a sound wave. Formants occur at around 1,000 Hz and correspond to a measurement of resonance produced in the vocal tract during phonation. The formant with the lowest frequency is referred to as the F1, the second F2, the third F3, etc.
+>Formants are the crest, or spectral peaks of a sound wave. Formants occur at around 1,000 Hz and correspond to a measurement of resonance produced in the vocal tract during phonation. The formant with the lowest frequency is referred to as the F1, the second F2, the third F3, etc.
 
 ## The Acoustic Properties of Vowels
 
