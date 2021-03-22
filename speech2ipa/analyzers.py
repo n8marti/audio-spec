@@ -1,5 +1,8 @@
 """Functions that analyze the audio data."""
 
+from matplotlib import pyplot as plt
+
+
 # Read arguments; set global variables.
 VOICE_MIN_FREQ = 500    # should be more like 200 according to vowel quad.; needs testing
 VOICE_MAX_FREQ = 1000   # ref: vowel quadrilateral
@@ -7,6 +10,51 @@ VOICE_BASE_AMP = 20000  # empirical number based on testing. What unit is it?!
 ASPIR_MIN_FREQ = 2500   # empirical
 ASPIR_BASE_AMP = 100    # empirical
 ASPIR_FREQ_RATE = 0.1   # empirical; rate of audible vs inaudible frequencies in aspiration range
+
+def get_spectrogram_data(frame_rate, np_frames):
+    """Convert audio frames to spectrogram data array."""
+    # Set format details for plot.
+    #fig = plt.figure(num=None, figsize=(12, 7.5), dpi=300)
+    #ax = fig.add_subplot(111)
+    #ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    #ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.1))
+    #ax.yaxis.set_major_locator(ticker.MultipleLocator(2000))
+    #ax.yaxis.set_minor_locator(ticker.MultipleLocator(500))
+    #ax.tick_params(axis='both', direction='inout')
+    #plt.title(f"Spectrogram of:\n{input_file}")
+    plt.title(f"Spectrogram")
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Frequency (Hz)')
+
+    """
+    ### This doesn't result in a "narrow" enough bandwidth; i.e. the frequencies
+    # Set NFFT so that there are ~100 columns per second of audio.
+    #       have too much resolution and each formant is split into multiple
+    #       bands.
+    columns_per_sec = 100   # desired horizontal resolution
+    noverlap = 500          # default: 128; correlates with vertical resolution
+    # matplotlib says that an NFFT that is a power of 2 is most efficient,
+    #   but how would I round the calculation to the nearest power of 2?
+    NFFT = int(frame_rate / columns_per_sec + noverlap) # NFFT = 941
+    """
+    # If NFFT is too high, then there the horizontal (frequency) resolution is
+    #   too fine, and there are multiple bands for each formant. However, if
+    #   NFFT is too low, then the whole image is rather blurry and even the
+    #   formants are not well differentiated (i.e. at the fault vaules for NFFT
+    #   and noverlap). noverlap that is half of NFFT seems to minimize background
+    #   noise, as well.
+    noverlap = 256          # default: 128
+    NFFT = 512              # default: 256
+
+    # Create the plot.
+    spectrum, frequencies, times, img = plt.specgram(
+        np_frames,
+        Fs=frame_rate,
+        cmap='gnuplot',
+        noverlap=noverlap,
+        NFFT=NFFT,
+    )
+    return spectrum, frequencies, times, img
 
 def get_time_frames(np_spectrum, np_freqs, np_times):
     # Organize data into dictionary.
