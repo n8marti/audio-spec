@@ -5,11 +5,7 @@
 - register (gender): low (adult male) / medium (adult female) / high (child)
 - pace [vowels/sec]?
 
-## Acoustic properties of a feature (not phoneme, which is distinguished by multiple features)
-- [ ] separators
-  - [x] silence
-  - [ ] switch between consonant/vowel & vice versa
-  - [ ] formant changes (dipthongs)
+## Acoustic properties of a phoneme
 - [ ] ID vowel vs consonant
 - [ ] voicing/aspiration (voiced: V is True; aspir.: V is False, S is False)
 - [x] formant frequencies: F1 > pharyngeal cavity, F2 > front cavity, [Hz]
@@ -18,12 +14,17 @@
   - [ ] start time [s]
   - [ ] end time [s]
 
+## Separators between phonemes
+- [ ] change silence status
+- [ ] change in aspiration status
+- [ ] change in vocalization status
+- [ ] change in formant list (dipthongs), but harder to get good accuracy
+
 ## Acoustic properties of a time slice of audio
 - [x] silence: True / False
 - [x] vocalization: True / False
 - [x] aspiration: True / False
-- [x] primary frequencies: F1, F2 [Hz] (consider F3)
-
+- [x] formants: F1, F2 [Hz] (consider F3)
 
 # General research
 
