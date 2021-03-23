@@ -148,6 +148,11 @@ def print_spectrum_properties(np_spectrum, np_freqs, np_times):
 
     print(f"Duration: {duration} s")
 
+def print_frame_data(time_frames, startsec):
+    print(f"Time\tSilence\tVocal.\tAspir.\tFormants")
+    for t, data in time_frames.items():
+        print(f"{round(t + startsec, 3)}\t{data['silence']}\t{data['vocalization']}\t{data['aspiration']}\t{data['formants']}")
+
 def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames=False):
     """Print out a basic spectrogram in the terminal for debugging."""
     for ri, r in enumerate(np_spectrum[::-1]):
