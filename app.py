@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read and parse info from audio files."""
+"""Read and parse speech info from audio files."""
 
 import numpy as np
 import sys
@@ -31,19 +31,21 @@ if __name__ == '__main__':
         startsec = float(sys.argv[2])
         startfr = int(startsec * file_info.framerate) # * file_info.sampwidth)
 
-
     # Convert byte_frames to np_frames, crop according to start and end args.
     np_frames = utils.convert_to_np_frames(byte_frames, startfr, endfr)
 
     # Generate illustrative plots; return spectrum.
-    np_spectrum, np_freqs, np_times = outputs.generate_plots(input_file, np_frames, file_info.framerate)
+    #np_spectrum, np_freqs, np_times = outputs.generate_plots(input_file, np_frames, file_info.framerate)
+    np_spectrum, np_freqs, np_times, img = analyzers.get_spectrogram_data(file_info.framerate, np_frames)
     # Normalize specturm by applying filters.
     np_spectrum, np_freqs = filters.normalize_spectrum(np_spectrum, np_freqs, np_times)
     # Organize time frame data into dictionary.
     time_frames = analyzers.get_time_frames(np_spectrum, np_freqs, np_times)
-
-    #outputs.print_terminal_spectrogram(np_spectrum, np_freqs, np_times, analyzers.VOICE_BASE_AMP, time_frames)
-
+    #for t, d in time_frames.items():
+    #    print(f"{t}:\t{d}")
+    #outputs.print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames)
+    outputs.print_frame_data(time_frames, startsec)
+    exit()
 
     phonemes = analyzers.get_phonemes(time_frames)
     print(phonemes)
