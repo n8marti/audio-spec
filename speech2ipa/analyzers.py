@@ -8,8 +8,9 @@ from speech2ipa import utils
 
 
 # Read arguments; set global variables.
-VOICE_MIN_FREQ = 200    # should be more like 200 according to vowel quad.; needs testing
-VOICE_MAX_FREQ = 3000   # ref: vowel quadrilateral
+VOICE_MIN_FREQ = 200    # see vowel quadrilateral
+VOICE_MAX_FREQ = 3000   # see vowel quadrilateral
+ASPIR_MIN_FREQ = 2500   # arbitrary; aspiration can start a any frequency.
 # Note: A "peak amplitude range" is a measure of how consistent or steady the
 #   amplitudes are across all frequencies at a given moment of time.
 #   It is found in this way:
@@ -17,11 +18,10 @@ VOICE_MAX_FREQ = 3000   # ref: vowel quadrilateral
 #       listed. Relative maximums (i.e. "peaks") are then found in this list. The
 #       range, then, is the difference between the higest peak amplitude and the
 #       lowest peak amplitude.
-VOICE_MIN_PEAK_AMP_RANGE = 5000     # empirical; 2000 seems a little overbroad
-ASPIR_MIN_FREQ = 2500               # empirical
-ASPIR_MIN_PEAK_AMP_RANGE = 100      # empirical
-ASPIR_MAX_PEAK_AMP_RANGE = 2000     # empirical
-SILENCE_MAX_PEAK_AMP_RANGE = 500    # empirical
+VOICE_PEAK_AMP_RANGE_MIN = 5000     # arbitrary; 2000 seems a little overbroad
+ASPIR_PEAK_AMP_RANGE_MIN = 100      # arbitrary
+ASPIR_PEAK_AMP_RANGE_MAX = 2000     # arbitrary
+SILENCE_PEAK_AMP_RANGE_MAX = 500    # arbitrary
 
 def get_spectrogram_data(frame_rate, np_frames):
     """Convert audio frames to spectrogram data array."""
@@ -57,6 +57,9 @@ def get_spectrogram_data(frame_rate, np_frames):
     )
     return spectrum, frequencies, times, img
 
+# ------------------------------------------------------------------------------
+# Analyze data related to each time frame in the audio track.
+# ------------------------------------------------------------------------------
 def get_time_frames(np_spectrum, np_freqs, np_times):
     # Organize data into dictionary.
     time_frames = {t: {'index': i} for i, t in enumerate(np_times)}
@@ -91,7 +94,7 @@ def get_silence_status(time_frame, np_freqs):
         if freq > VOICE_MIN_FREQ:
             valid_amps.append(time_frame['amplitudes'][i])
     peak_amps_range = utils.get_peak_amps_range(valid_amps)
-    if peak_amps_range < SILENCE_MAX_PEAK_AMP_RANGE:
+    if peak_amps_range < SILENCE_PEAK_AMP_RANGE_MAX:
         time_frame['silence'] = True
     else:
         time_frame['silence'] = False
@@ -105,7 +108,7 @@ def get_vocalization_status(time_frame, np_freqs):
         if freq > VOICE_MIN_FREQ and freq < VOICE_MAX_FREQ:
             valid_amps.append(time_frame['amplitudes'][i])
     peak_amps_range = utils.get_peak_amps_range(valid_amps)
-    if peak_amps_range > VOICE_MIN_PEAK_AMP_RANGE:
+    if peak_amps_range > VOICE_PEAK_AMP_RANGE_MIN:
         time_frame['vocalization'] = True
     else:
         time_frame['vocalization'] = False
@@ -120,7 +123,7 @@ def get_aspiration_status(time_frame, np_freqs):
         if freq > ASPIR_MIN_FREQ:
             valid_amps.append(time_frame['amplitudes'][i])
     peak_amps_range = utils.get_peak_amps_range(valid_amps)
-    if ASPIR_MIN_PEAK_AMP_RANGE < peak_amps_range < ASPIR_MAX_PEAK_AMP_RANGE:
+    if ASPIR_PEAK_AMP_RANGE_MIN < peak_amps_range < ASPIR_PEAK_AMP_RANGE_MAX:
         time_frame['aspiration'] = True
     else:
         time_frame['aspiration'] = False
@@ -167,10 +170,16 @@ def get_formants(time_frame, np_freqs):
         if time_frame['amplitudes'][i] in top_amps:
             #print(f"{freq}\t{time_frame['amplitudes'][i]}")
             time_frame['formants'].append(round(freq))
-
-    print(time_frame['formants'])
     return time_frame
 
+# ------------------------------------------------------------------------------
+# Analyze data find separations between phonemes in the audio track.
+# ------------------------------------------------------------------------------
+
+
+# ------------------------------------------------------------------------------
+# Analyze data to describe or identify each phoneme in the audio track.
+# ------------------------------------------------------------------------------
 def get_phoneme_starts(phonemes, time_frames):
     """Note time frames where sound begins after silence."""
     # TODO: Consider that not all phonemes are separated by silence.
