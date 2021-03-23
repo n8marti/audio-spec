@@ -1,6 +1,7 @@
 """General utility functions that don't fit elsewhere."""
 
 import ffmpeg
+import math
 import numpy as np
 import wave
 
@@ -78,6 +79,42 @@ def convert_to_np_frames(byte_frames, start, end):
     np_frames = np.frombuffer(byte_frames, dtype='int16')
     np_frames = np_frames[start:end]
     return np_frames
+
+def get_min_amp(frequency):
+    """Return the minimum usable amplitude for a given frequency."""
+    # Empirically calculated if amp = 20000 is good at 200 Hz; 100 @ 8000 Hz
+    #   equation graphing: https://www.desmos.com/calculator
+
+    if frequency <= 2500:
+        min_amp = 30000 - 4000 * frequency**(1/4)
+        #min_amp = 30000 - 10 * frequency
+    else:
+        min_amp = 500 - 0.05 * frequency
+
+    #min_amp = 20
+    #min_amp = -4000*(frequency - 2500)**(1/9) + 11000
+    #min_amp = -1000 * math.log(frequency) + 5000
+    #min_amp = 500 - 0.05 * frequency
+
+    return min_amp
+
+def get_peak_amps(amps):
+    peaks = []
+    amp_1prev = None
+    amp_2prev = None
+    for i, amp in enumerate(amps):
+        if (amp_2prev and amp < amp_1prev and amp_1prev > amp_2prev) \
+            or (not amp_2prev and amp_1prev and amp < amp_1prev):
+            peaks.append(amp_1prev)
+        if amp_1prev:
+            amp_2prev = amp_1prev
+        amp_1prev = amp
+    return peaks
+
+def get_peak_amps_range(amps):
+    peaks = get_peak_amps(amps)
+    peak_amps_range = max(peaks) - min(peaks)
+    return peak_amps_range
 
 def generate_sine_wave(freq, sample_rate, duration):
     x = np.linspace(0, duration, sample_rate * duration, endpoint=False)

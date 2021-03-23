@@ -8,7 +8,7 @@ def normalize_spectrum(np_spectrum, np_freqs, np_times):
     # Trim out high frequencies (> 8 kHz).
     np_spectrum, np_freqs = cut_high_freqs(np_spectrum, np_freqs)
     # Trim out background white noise.
-    np_spectrum = subtract_bg_noise(np_spectrum, np_freqs, np_times)
+    #np_spectrum = subtract_bg_noise(np_spectrum, np_freqs, np_times)
 
     return np_spectrum, np_freqs
 

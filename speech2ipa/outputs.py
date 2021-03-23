@@ -7,6 +7,8 @@ import wave
 from matplotlib import pyplot
 from scipy.fft import irfft, rfft, rfftfreq
 
+from speech2ipa import utils
+
 def save_wav_as(np_spectrum, file_info, output_file):
     """Write out the wave data to a WAV file."""
     print(np_spectrum.shape)
@@ -146,22 +148,25 @@ def print_spectrum_properties(np_spectrum, np_freqs, np_times):
 
     print(f"Duration: {duration} s")
 
-def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, VOICE_BASE_AMP, time_frames=False):
+def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames=False):
     """Print out a basic spectrogram in the terminal for debugging."""
     for ri, r in enumerate(np_spectrum[::-1]):
         # Print frequency scale item.
+        freq = np_freqs[len(np_freqs) - ri - 1]
         if ri % 2 == 0:
-            print(f"{int(np_freqs[len(np_freqs) - ri - 1] / 1000)}K ", end='')
+            print(f"{int(freq / 1000)}K ", end='')
         else:
             print('   ', end='')
         # Print frequency rows.
         for a in r:
-            if a == 0:
+            #min_amp = utils.get_min_amp(freq)
+            min_amp = 10
+            if a < min_amp:
                 print('   ', end='')
-            elif a < 500:
-                print('.  ', end='')
-            elif a < VOICE_BASE_AMP:
-                print('_  ', end='')
+            elif a < 100 * min_amp:
+                print('-  ', end='')
+            elif a < 10000 * min_amp:
+                print('*  ', end='')
             else:
                 print('#  ', end='')
         print()

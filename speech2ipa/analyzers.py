@@ -1,15 +1,27 @@
 """Functions that analyze the audio data."""
 
+import math
+
 from matplotlib import pyplot as plt
+
+from speech2ipa import utils
 
 
 # Read arguments; set global variables.
-VOICE_MIN_FREQ = 500    # should be more like 200 according to vowel quad.; needs testing
-VOICE_MAX_FREQ = 1000   # ref: vowel quadrilateral
-VOICE_BASE_AMP = 20000  # empirical number based on testing. What unit is it?!
-ASPIR_MIN_FREQ = 2500   # empirical
-ASPIR_BASE_AMP = 100    # empirical
-ASPIR_FREQ_RATE = 0.1   # empirical; rate of audible vs inaudible frequencies in aspiration range
+VOICE_MIN_FREQ = 200    # should be more like 200 according to vowel quad.; needs testing
+VOICE_MAX_FREQ = 3000   # ref: vowel quadrilateral
+# Note: A "peak amplitude range" is a measure of how consistent or steady the
+#   amplitudes are across all frequencies at a given moment of time.
+#   It is found in this way:
+#       At a given point in time all the amplitudes (one from each frequency) are
+#       listed. Relative maximums (i.e. "peaks") are then found in this list. The
+#       range, then, is the difference between the higest peak amplitude and the
+#       lowest peak amplitude.
+VOICE_MIN_PEAK_AMP_RANGE = 5000     # empirical; 2000 seems a little overbroad
+ASPIR_MIN_FREQ = 2500               # empirical
+ASPIR_MIN_PEAK_AMP_RANGE = 100      # empirical
+ASPIR_MAX_PEAK_AMP_RANGE = 2000     # empirical
+SILENCE_MAX_PEAK_AMP_RANGE = 500    # empirical
 
 def get_spectrogram_data(frame_rate, np_frames):
     """Convert audio frames to spectrogram data array."""
@@ -26,25 +38,14 @@ def get_spectrogram_data(frame_rate, np_frames):
     plt.xlabel('Time (seconds)')
     plt.ylabel('Frequency (Hz)')
 
-    """
-    ### This doesn't result in a "narrow" enough bandwidth; i.e. the frequencies
-    # Set NFFT so that there are ~100 columns per second of audio.
-    #       have too much resolution and each formant is split into multiple
-    #       bands.
-    columns_per_sec = 100   # desired horizontal resolution
-    noverlap = 500          # default: 128; correlates with vertical resolution
-    # matplotlib says that an NFFT that is a power of 2 is most efficient,
-    #   but how would I round the calculation to the nearest power of 2?
-    NFFT = int(frame_rate / columns_per_sec + noverlap) # NFFT = 941
-    """
     # If NFFT is too high, then there the horizontal (frequency) resolution is
     #   too fine, and there are multiple bands for each formant. However, if
     #   NFFT is too low, then the whole image is rather blurry and even the
-    #   formants are not well differentiated (i.e. at the fault vaules for NFFT
+    #   formants are not well differentiated (i.e. at the default vaules for NFFT
     #   and noverlap). noverlap that is half of NFFT seems to minimize background
     #   noise, as well.
-    noverlap = 256          # default: 128
-    NFFT = 512              # default: 256
+    noverlap = 128          # default: 128; other: 256
+    NFFT = 256              # default: 256; other: 512
 
     # Create the plot.
     spectrum, frequencies, times, img = plt.specgram(
@@ -82,43 +83,44 @@ def get_amplitudes(time_frame, np_spectrum):
 def get_silence_status(time_frame, np_freqs):
     """Determine if there is silence at the given time frame."""
     # Silence:
-    #   1. The amplitude at every frequency is below a defined threshold.
-    for i, amp in enumerate(time_frame['amplitudes']):
-        if np_freqs[i] < VOICE_MAX_FREQ:
-            amp_min = VOICE_BASE_AMP
-        else:
-            amp_min = ASPIR_BASE_AMP
-        if amp > amp_min:
-            time_frame['silence'] = False
-            return time_frame
-    time_frame['silence'] = True
+    #   The amplitude at every frequency is below a defined threshold.
+    #   The peak amplitude range is below that of aspiration.
+    #       NB: Some kinds of white noise would also probably qualify here.
+    valid_amps = []
+    for i, freq in enumerate(np_freqs):
+        if freq > VOICE_MIN_FREQ:
+            valid_amps.append(time_frame['amplitudes'][i])
+    peak_amps_range = utils.get_peak_amps_range(valid_amps)
+    if peak_amps_range < SILENCE_MAX_PEAK_AMP_RANGE:
+        time_frame['silence'] = True
+    else:
+        time_frame['silence'] = False
     return time_frame
 
 def get_vocalization_status(time_frame, np_freqs):
     """Determine if there is vocalization at the given time frame."""
     # "Vocalization" means "sufficient amplitude in the F1-F3 frequency range".
-    #   This range is about 100 Hz to 2500 Hz for F1-F2
-    #   But maybe it's best to only consider F1, between 100 Hz and 800-1000 Hz.
+    valid_amps = []
     for i, freq in enumerate(np_freqs):
         if freq > VOICE_MIN_FREQ and freq < VOICE_MAX_FREQ:
-            if time_frame['amplitudes'][i] > VOICE_BASE_AMP:
-                time_frame['vocalization'] = True
-                return time_frame
-            else:
-                time_frame['vocalization'] = False
+            valid_amps.append(time_frame['amplitudes'][i])
+    peak_amps_range = utils.get_peak_amps_range(valid_amps)
+    if peak_amps_range > VOICE_MIN_PEAK_AMP_RANGE:
+        time_frame['vocalization'] = True
+    else:
+        time_frame['vocalization'] = False
     return time_frame
 
 def get_aspiration_status(time_frame, np_freqs):
     """Determine if there is aspiration at the given time frame."""
-    # "Aspiration" means "sufficient amplitude in the >2500 Hz frequency range
-    #   for a sufficient number of frequencies".
-    freq_ct, aspir_ct = 0, 0
+    # "Aspiration" means "sufficient and consistent amplitude in the >2500 Hz
+    #   frequency range for a sufficient number of frequencies".
+    valid_amps = []
     for i, freq in enumerate(np_freqs):
         if freq > ASPIR_MIN_FREQ:
-            freq_ct += 1
-            if time_frame['amplitudes'][i] > ASPIR_BASE_AMP:
-                aspir_ct += 1
-    if aspir_ct / freq_ct > ASPIR_FREQ_RATE:
+            valid_amps.append(time_frame['amplitudes'][i])
+    peak_amps_range = utils.get_peak_amps_range(valid_amps)
+    if ASPIR_MIN_PEAK_AMP_RANGE < peak_amps_range < ASPIR_MAX_PEAK_AMP_RANGE:
         time_frame['aspiration'] = True
     else:
         time_frame['aspiration'] = False
@@ -126,6 +128,7 @@ def get_aspiration_status(time_frame, np_freqs):
 
 def get_formants(time_frame, np_freqs):
     """Collect up to two formant frequencies found in the given time frame."""
+    '''
     # Find top two frequencies by highest amplitude below VOICE_MAX_FREQ.
     time_frame['formants'] = []
     # List all amplitudes in vocalization range.
@@ -133,15 +136,39 @@ def get_formants(time_frame, np_freqs):
     for i, freq in enumerate(np_freqs):
         if freq > VOICE_MIN_FREQ and freq < VOICE_MAX_FREQ:
             amps[i] = time_frame['amplitudes'][i]
+        else:
+            amps[i] = None
     # Find peak amplitudes.
     peaks = {}
     last_amp = 0
     for i, amp in amps.items():
-        if last_amp > VOICE_BASE_AMP and amp < last_amp and not peaks.get(i-2):
+        if amp and last_amp and not peaks.get(i-2) \
+            and last_amp > utils.get_min_amp(np_freqs[i]) and amp < last_amp:
             peaks[i-1] = last_amp
         last_amp = amp
     for i, amp in peaks.items():
         time_frame['formants'].append(round(np_freqs[i]))
+    '''
+    time_frame['formants'] = []
+    valid_amps = []
+    for i, freq in enumerate(np_freqs):
+        if VOICE_MIN_FREQ < freq < VOICE_MAX_FREQ:
+            valid_amps.append(time_frame['amplitudes'][i])
+    peaks = utils.get_peak_amps(valid_amps)
+    #print(peaks)
+    # To get formants, choose only 3 highest peaks.
+    #top_amps = []
+    #while len(top_amps) < 3 and len(peaks) > 0:
+    #    top_amps.append(max(peaks))
+    #    peaks.remove(max(peaks))
+    top_amps = peaks.copy()
+    # Get corresponding frequency of each top3 amplitude.
+    for i, freq in enumerate(np_freqs):
+        if time_frame['amplitudes'][i] in top_amps:
+            #print(f"{freq}\t{time_frame['amplitudes'][i]}")
+            time_frame['formants'].append(round(freq))
+
+    print(time_frame['formants'])
     return time_frame
 
 def get_phoneme_starts(phonemes, time_frames):
