@@ -16,6 +16,12 @@ def get_input_file_properties(input_file):
         exit(1)
         return probe['streams']
 
+def db_to_amp(db):
+    return 10 ** (db / 10)
+
+def amp_to_db(amp):
+    return 10 * np.log10(amp)
+
 def convert_to_wav(input_file):
     """Convert to WAV. Output to same directory as input_file."""
     # TODO: This needs to be tested.
@@ -86,17 +92,18 @@ def get_min_amp(frequency):
     #   equation graphing: https://www.desmos.com/calculator
 
     if frequency <= 2500:
-        min_amp = 30000 - 4000 * frequency**(1/4)
+        min_amp2 = 30000 - 4000 * frequency**(1/4)
         #min_amp = 30000 - 10 * frequency
     else:
-        min_amp = 500 - 0.05 * frequency
+        min_amp2 = 500 - 0.05 * frequency
 
     #min_amp = 20
     #min_amp = -4000*(frequency - 2500)**(1/9) + 11000
     #min_amp = -1000 * math.log(frequency) + 5000
     #min_amp = 500 - 0.05 * frequency
+    min_amp = 0.5 * 10 ** ((48.5 - 18 * frequency / (8000 - 200)) / 10)
 
-    return min_amp
+    return min_amp, min_amp2
 
 def get_peak_amps(amps):
     peaks = []
@@ -116,9 +123,17 @@ def get_peak_amps_range(amps):
     peak_amps_range = max(peaks) - min(peaks)
     return peak_amps_range
 
-def generate_sine_wave(freq, sample_rate, duration):
-    x = np.linspace(0, duration, sample_rate * duration, endpoint=False)
-    frequencies = x * freq
-    # 2pi because np.sin takes radians
-    y = np.sin((2 * np.pi) * frequencies)
-    return x, y
+def generate_sine_wave(frequency, sample_rate, duration):
+    samples = np.linspace(0, duration, sample_rate * duration, endpoint=False)
+    signals = []
+    for f in frequencies:
+        # 2pi because np.sin takes radians
+        signal = np.sin(2 * np.pi * samples * frequency)
+        signals.append(signal)
+    total_signal = 0
+    for s in signals:
+        total_signal += s
+    combined_signal = total_signal / len(signals)
+    combined_signal *= 32767
+    combined_signal = np.int16(combined_signal)
+    return combined_signal
