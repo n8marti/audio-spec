@@ -81,10 +81,17 @@ def get_output_file_obj(infile_obj):
     output_file = input_file.with_name(f"{input_file.stem}.wav")
     return output_file
 
-def convert_to_np_frames(byte_frames, start, end):
+def convert_to_np_frames(byte_frames):
     np_frames = np.frombuffer(byte_frames, dtype='int16')
-    np_frames = np_frames[start:end]
+    #np_frames = np_frames[start:end]
     return np_frames
+
+def get_list_stats(items):
+    items_range = len(items)
+    items_sum = np.sum(items)
+    items_avg = items_sum / items_range
+    items_std_dev = np.std(items)
+    return items_range, items_sum, items_avg, items_std_dev
 
 def get_min_amp(frequency):
     """Return the minimum usable amplitude for a given frequency."""
@@ -101,9 +108,9 @@ def get_min_amp(frequency):
     #min_amp = -4000*(frequency - 2500)**(1/9) + 11000
     #min_amp = -1000 * math.log(frequency) + 5000
     #min_amp = 500 - 0.05 * frequency
-    min_amp = 0.5 * 10 ** ((48.5 - 18 * frequency / (8000 - 200)) / 10)
+    min_amp = 0.01 * 10 ** ((48.5 - 18 * frequency / (8000 - 200)) / 10)
 
-    return min_amp, min_amp2
+    return min_amp
 
 def get_peak_amps(amps):
     peaks = []

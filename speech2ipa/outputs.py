@@ -9,17 +9,14 @@ from scipy.fft import irfft, rfft, rfftfreq
 
 from speech2ipa import utils
 
-def save_wav_as(np_spectrum, file_info, output_file):
+def save_wave_as(np_frames, frame_rate, output_file):
     """Write out the wave data to a WAV file."""
-    print(np_spectrum.shape)
-    np_frames = np_spectrum.flatten()
-    print(np_frames.shape)
     byte_frames = np_frames.tobytes()
     with wave.open(str(output_file), 'wb') as wav:
-        wav.setparams(file_info)
-        #wav.setframerate(frame_rate)
-        #wav.setnchannels(1)
-        #wav.setsampwidth(2)
+        #wav.setparams(file_info)
+        wav.setframerate(frame_rate)
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
         wav.writeframes(byte_frames)
 
 def plot_spectrogram(frame_rate, np_frames, input_file, output_file):
@@ -148,10 +145,21 @@ def print_spectrum_properties(np_spectrum, np_freqs, np_times):
 
     print(f"Duration: {duration} s")
 
-def print_frame_data(time_frames, startsec):
-    print(f"Time\tSilence\tVocal.\tAspir.\tFormants")
+def print_sample_properties(properties_dict):
+    for prop, data in properties_dict.items():
+        print(f"{prop}: {data['value']} {data.get('unit')}")
+
+def print_frame_data(time_frames):
+    print(f"Index\tTime\tSilence\tVocal.\tTurb.\tFormants")
     for t, data in time_frames.items():
-        print(f"{round(t + startsec, 3)}\t{data['silence']}\t{data['vocalization']}\t{data['aspiration']}\t{data['formants']}")
+        print(f"{data['index']}\t{round(t, 3)}\t{data['silence']}\t{data['vocalization']}\t{data['turbulence']}\t{data['formants']}")
+
+def print_amplitudes(time_frames):
+    for t, data in time_frames.items():
+        print(f"{round(t, 3)}\n{[round(a) for a in data['amplitudes']]}\n")
+
+def print_frequencies(np_freqs):
+    print(np_freqs)
 
 def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames=False):
     """Print out a basic spectrogram in the terminal for debugging."""
@@ -204,10 +212,10 @@ def print_terminal_spectrogram(np_spectrum, np_freqs, np_times, time_frames=Fals
             else:
                 print('F  ', end='')
         print()
-        # - aspiration
-        print('A: ', end='')
+        # - turbulence
+        print('T: ', end='')
         for time_frame in time_frames.values():
-            if time_frame['aspiration'] == True:
+            if time_frame['turbulence'] == True:
                 print('T  ', end='')
             else:
                 print('F  ', end='')

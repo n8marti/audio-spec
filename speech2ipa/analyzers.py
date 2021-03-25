@@ -1,6 +1,6 @@
 """Functions that analyze the audio data."""
 
-import math
+import numpy as np
 
 from matplotlib import pyplot as plt
 
@@ -10,7 +10,7 @@ from speech2ipa import utils
 # Read arguments; set global variables.
 VOICE_MIN_FREQ = 200    # see vowel quadrilateral
 VOICE_MAX_FREQ = 3000   # see vowel quadrilateral
-ASPIR_MIN_FREQ = 2500   # arbitrary; aspiration can start a any frequency.
+TURB_MIN_FREQ = 5500   # arbitrary; turbulence can start at any frequency.
 # Note: A "peak amplitude range" is a measure of how consistent or steady the
 #   amplitudes are across all frequencies at a given moment of time.
 #   It is found in this way:
@@ -18,10 +18,16 @@ ASPIR_MIN_FREQ = 2500   # arbitrary; aspiration can start a any frequency.
 #       listed. Relative maximums (i.e. "peaks") are then found in this list. The
 #       range, then, is the difference between the higest peak amplitude and the
 #       lowest peak amplitude.
-VOICE_PEAK_AMP_RANGE_MIN = 5000     # arbitrary; 2000 seems a little overbroad
-ASPIR_PEAK_AMP_RANGE_MIN = 100      # arbitrary
-ASPIR_PEAK_AMP_RANGE_MAX = 2000     # arbitrary
-SILENCE_PEAK_AMP_RANGE_MAX = 500    # arbitrary
+# TODO: These numbers now need to be adjusted based on a normalized 1,000,000 amplitude.
+VOICE_PEAK_AMP_RANGE_MIN = 7500     # arbitrary; 2000 seems a little overbroad
+TURB_PEAK_AMP_RANGE_MIN = 25       # arbitrary
+TURB_PEAK_AMP_RANGE_MAX = 150      # arbitrary; 1000 allowed an F4 to be counted
+SILENCE_PEAK_AMP_RANGE_MAX = 1200   # arbitrary; 500 was too permissive
+# In human speech, the loudness of the 8000 Hz band is about 18 dB less than the 200 Hz band.
+# See: https://www.dpamicrophones.com/mic-university/facts-about-speech-intelligibility
+#   dBmin   = 48.5 - 18 * F / 7,800                     = 30    @ F = 8000 Hz
+#   Amin    = 10 ** (( 48.5 - 18 * F / 7,800 ) / 10)    = 1000  @ F = 8000 Hz
+
 
 def get_spectrogram_data(frame_rate, np_frames):
     """Convert audio frames to spectrogram data array."""
@@ -60,41 +66,51 @@ def get_spectrogram_data(frame_rate, np_frames):
 # ------------------------------------------------------------------------------
 # Analyze data related to each time frame in the audio track.
 # ------------------------------------------------------------------------------
-def get_time_frames(np_spectrum, np_freqs, np_times):
+def get_time_frames(np_spectrum, np_freqs, np_times, startsec, endsec):
     # Organize data into dictionary.
-    time_frames = {t: {'index': i} for i, t in enumerate(np_times)}
+    time_frames = {}
+    max_amp = max(np_spectrum.flat)
+    for i, t in enumerate(np_times):
+        if startsec <= t <= endsec:
+            time_frames[t] = {'index': i}
+    #time_frames = {t: {'index': i} for i, t in enumerate(np_times)}
     for t, time_frame in time_frames.items():
         # Add amplitudes to dictionary.
-        time_frame = get_amplitudes(time_frame, np_spectrum)
+        time_frame = get_amplitudes(time_frame, np_spectrum, max_amp)
         # Add silence status to dictionary.
         time_frame = get_silence_status(time_frame, np_freqs)
         # Add vocalization status to dictionary.
         time_frame = get_vocalization_status(time_frame, np_freqs)
-        # Add aspiration status.
-        time_frame = get_aspiration_status(time_frame, np_freqs)
+        # Add turbulence status.
+        time_frame = get_turbulence_status(time_frame, np_freqs)
         # Find formants.
         time_frame = get_formants(time_frame, np_freqs)
         # Add accumulated data to dictionary.
         time_frames[t] = time_frame
     return time_frames
 
-def get_amplitudes(time_frame, np_spectrum):
+def get_amplitudes(time_frame, np_spectrum, max_amp):
     """Add the amplitude at each frequency to the given time frame."""
-    time_frame['amplitudes'] = [row[time_frame['index']] for row in np_spectrum]
+    # Since these values are inconsistent, they are normalized to a max of 1,000,000.
+    time_frame['amplitudes'] = [row[time_frame['index']] / max_amp * 1_000_000 for row in np_spectrum]
     return time_frame
 
 def get_silence_status(time_frame, np_freqs):
     """Determine if there is silence at the given time frame."""
     # Silence:
     #   The amplitude at every frequency is below a defined threshold.
-    #   The peak amplitude range is below that of aspiration.
+    #   The peak amplitude range is below that of turbulence.
     #       NB: Some kinds of white noise would also probably qualify here.
-    valid_amps = []
-    for i, freq in enumerate(np_freqs):
-        if freq > VOICE_MIN_FREQ:
-            valid_amps.append(time_frame['amplitudes'][i])
-    peak_amps_range = utils.get_peak_amps_range(valid_amps)
-    if peak_amps_range < SILENCE_PEAK_AMP_RANGE_MAX:
+    #valid_amps = []
+    #for i, freq in enumerate(np_freqs):
+    #    if freq > VOICE_MIN_FREQ:
+    #        valid_amps.append(time_frame['amplitudes'][i])
+    #peak_amps_range = utils.get_peak_amps_range(valid_amps)
+
+    amps_list = [a for a in time_frame['amplitudes']]
+    amps_range, amps_sum, amps_avg, amps_std_dev = utils.get_list_stats(amps_list)
+    #if peak_amps_range < SILENCE_PEAK_AMP_RANGE_MAX:
+    if amps_avg < 300 and amps_std_dev < 3000:
         time_frame['silence'] = True
     else:
         time_frame['silence'] = False
@@ -114,19 +130,38 @@ def get_vocalization_status(time_frame, np_freqs):
         time_frame['vocalization'] = False
     return time_frame
 
-def get_aspiration_status(time_frame, np_freqs):
-    """Determine if there is aspiration at the given time frame."""
-    # "Aspiration" means "sufficient and consistent amplitude in the >2500 Hz
+def get_turbulence_status(time_frame, np_freqs):
+    """Determine if there is turbulence at the given time frame."""
+    # https://home.cc.umanitoba.ca/~krussll/phonetics/acoustic/spectrogram-sounds.html
+
+    # "Turbulence" means "sufficient and consistent amplitude in the >2500 Hz
     #   frequency range for a sufficient number of frequencies".
-    valid_amps = []
-    for i, freq in enumerate(np_freqs):
-        if freq > ASPIR_MIN_FREQ:
-            valid_amps.append(time_frame['amplitudes'][i])
-    peak_amps_range = utils.get_peak_amps_range(valid_amps)
-    if ASPIR_PEAK_AMP_RANGE_MIN < peak_amps_range < ASPIR_PEAK_AMP_RANGE_MAX:
-        time_frame['aspiration'] = True
+    #valid_amps = {}
+    #for i, freq in enumerate(np_freqs):
+    #    if freq > TURB_MIN_FREQ:
+    #        valid_amps[i] = time_frame['amplitudes'][i]
+
+    # "Turbulence" means "sufficient amplitude with std. dev. of amplitudes < 3000".
+    valid_amps = {i: a for i, a in enumerate(time_frame['amplitudes'])}
+    amps_list = [a for a in valid_amps.values()]
+    #amps_range = len(amps_list)
+    #amps_sum = np.sum(amps_list)
+    #amps_avg = amps_sum / amps_range
+    #amps_std_dev = np.std(amps_list)
+    amps_range, amps_sum, amps_avg, amps_std_dev = utils.get_list_stats(amps_list)
+    M_sum = 0
+    for i, a in valid_amps.items():
+        M_sum += np_freqs[i] * a # distance measured from bottom, 0 Hz
+    amps_Fmid = M_sum / amps_sum
+    peaks = utils.get_peak_amps(amps_list)
+    peaks_std_dev = np.std(peaks)
+    peak_amps_range = utils.get_peak_amps_range(amps_list)
+    print(f"{time_frame['index']}:\tamps avg: {round(amps_avg)}\tamps Fmid: {round(amps_Fmid)}\tamps stdev: {round(amps_std_dev)}\tpeaks stdev: {round(peaks_std_dev)}\tpeaks range: {round(peak_amps_range)}")
+    #if TURB_PEAK_AMP_RANGE_MIN < peak_amps_range < TURB_PEAK_AMP_RANGE_MAX and a_avg > 10:
+    if amps_avg > 300 and amps_std_dev < 3000 and peaks_std_dev < 4000:
+        time_frame['turbulence'] = True
     else:
-        time_frame['aspiration'] = False
+        time_frame['turbulence'] = False
     return time_frame
 
 def get_formants(time_frame, np_freqs):
@@ -156,7 +191,10 @@ def get_formants(time_frame, np_freqs):
     valid_amps = []
     for i, freq in enumerate(np_freqs):
         if VOICE_MIN_FREQ < freq < VOICE_MAX_FREQ:
-            valid_amps.append(time_frame['amplitudes'][i])
+            amp = time_frame['amplitudes'][i]
+            amp_min = utils.get_min_amp(freq)
+            if amp > amp_min:
+                valid_amps.append(amp)
     peaks = utils.get_peak_amps(valid_amps)
     #print(peaks)
     # To get formants, choose only 3 highest peaks.
@@ -172,10 +210,66 @@ def get_formants(time_frame, np_freqs):
             time_frame['formants'].append(round(freq))
     return time_frame
 
-# ------------------------------------------------------------------------------
-# Analyze data find separations between phonemes in the audio track.
-# ------------------------------------------------------------------------------
+def get_sample_properties(time_frames):
+    props = {}
+    props['duration'] = {'value': round(max(time_frames.keys()), 3), 'unit': 's'}
+    return props
 
+# ------------------------------------------------------------------------------
+# Analyze data to find separations between phonemes in the audio track.
+# ------------------------------------------------------------------------------
+def get_phonemes(time_frames):
+    phonemes = {}
+    frame_total = len(time_frames)
+    start_ct = 0
+    ch_sil_prev = False
+    ch_voc_prev = False
+    ch_tur_prev = False
+    #print(f"Time\tdSil\tdVoc\tdTur")
+    indexes = [d['index'] for d in time_frames.values()]
+    for t, data in time_frames.items():
+        if data['index'] == min(indexes):
+            # First frame.
+            pass
+        else:
+            # Normal processing.
+            ch_sil = is_changed('silence', time_frames, t)
+            ch_voc = is_changed('vocalization', time_frames, t)
+            ch_tur = is_changed('turbulence', time_frames, t)
+            if (ch_sil and ch_sil_prev) or (ch_voc and ch_voc_prev) or (ch_tur and ch_tur_prev):
+                # Ignore rapidly-changing properties.
+                ch_sil_prev = ch_sil
+                ch_voc_prev = ch_voc
+                ch_tur_prev = ch_tur
+                continue
+            #print(f"{round(t, 3)}\t{ch_sil}\t{ch_voc}\t{ch_tur}")
+            if not data['silence'] and (ch_sil or ch_voc or ch_tur):
+                # There is no longer silence, but there might not yet be any
+                #   vocalization or turbulence.
+                start_ct += 1
+                #print(f"start at {t}")
+                phonemes[start_ct] = {}
+            ch_sil_prev = ch_sil
+            ch_voc_prev = ch_voc
+            ch_tur_prev = ch_tur
+    print(len(phonemes))
+    return phonemes
+
+def is_changed(property, time_frames, t):
+    i = time_frames[t]['index']
+    for time, data in time_frames.items():
+        if data['index'] == i - 1:
+            t_prev = time
+            break
+    prop_prev = time_frames[t_prev][property]
+    if time_frames[t][property] == prop_prev:
+        is_changed = False
+    else:
+        is_changed = True
+    return is_changed
+
+def formants_is_changed(time_frames, t):
+    pass
 
 # ------------------------------------------------------------------------------
 # Analyze data to describe or identify each phoneme in the audio track.
@@ -259,8 +353,4 @@ def get_phoneme_starts(phonemes, time_frames):
             else:
                 print(i, '-') # ongoing phoneme
 
-    return phonemes
-
-def get_phonemes(time_frames):
-    phonemes = get_phoneme_starts({}, time_frames)
     return phonemes
