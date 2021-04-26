@@ -95,21 +95,12 @@ def get_list_stats(items):
 
 def get_min_amp(frequency):
     """Return the minimum usable amplitude for a given frequency."""
-    # Empirically calculated if amp = 20000 is good at 200 Hz; 100 @ 8000 Hz
+    # In human speech, the loudness of the 8000 Hz band is about 18 dB less than the 200 Hz band.
+    # See: https://www.dpamicrophones.com/mic-university/facts-about-speech-intelligibility
     #   equation graphing: https://www.desmos.com/calculator
-
-    if frequency <= 2500:
-        min_amp2 = 30000 - 4000 * frequency**(1/4)
-        #min_amp = 30000 - 10 * frequency
-    else:
-        min_amp2 = 500 - 0.05 * frequency
-
-    #min_amp = 20
-    #min_amp = -4000*(frequency - 2500)**(1/9) + 11000
-    #min_amp = -1000 * math.log(frequency) + 5000
-    #min_amp = 500 - 0.05 * frequency
+    #   dBmin   = 48.5 - 18 * F / 7,800                     = 30    @ F = 8000 Hz
+    #   Amin    = 10 ** (( 48.5 - 18 * F / 7,800 ) / 10)    = 1000  @ F = 8000 Hz
     min_amp = 0.01 * 10 ** ((48.5 - 18 * frequency / (8000 - 200)) / 10)
-
     return min_amp
 
 def get_peak_amps(amps):

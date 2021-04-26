@@ -10,23 +10,15 @@ from speech2ipa import utils
 # Read arguments; set global variables.
 VOICE_MIN_FREQ = 200    # see vowel quadrilateral
 VOICE_MAX_FREQ = 3000   # see vowel quadrilateral
-TURB_MIN_FREQ = 5500   # arbitrary; turbulence can start at any frequency.
+
 # Note: A "peak amplitude range" is a measure of how consistent or steady the
 #   amplitudes are across all frequencies at a given moment of time.
 #   It is found in this way:
-#       At a given point in time all the amplitudes (one from each frequency) are
-#       listed. Relative maximums (i.e. "peaks") are then found in this list. The
-#       range, then, is the difference between the higest peak amplitude and the
-#       lowest peak amplitude.
-# TODO: These numbers now need to be adjusted based on a normalized 1,000,000 amplitude.
+#       TODO: rewrite calculation description.
+AMPS_AVG_MIN = 300              # arbitrary; to distinguish turbulence from silence
+TURB_AMPS_DEV_MIN = 3000        # arbitrary; to distinguish turbulence from vocalization
+TURB_PEAKS_DEV_MIN = 4000       # arbitrary; to distinguish turbulence from vocalization (redundant)
 VOICE_PEAK_AMP_RANGE_MIN = 7500     # arbitrary; 2000 seems a little overbroad
-TURB_PEAK_AMP_RANGE_MIN = 25       # arbitrary
-TURB_PEAK_AMP_RANGE_MAX = 150      # arbitrary; 1000 allowed an F4 to be counted
-SILENCE_PEAK_AMP_RANGE_MAX = 1200   # arbitrary; 500 was too permissive
-# In human speech, the loudness of the 8000 Hz band is about 18 dB less than the 200 Hz band.
-# See: https://www.dpamicrophones.com/mic-university/facts-about-speech-intelligibility
-#   dBmin   = 48.5 - 18 * F / 7,800                     = 30    @ F = 8000 Hz
-#   Amin    = 10 ** (( 48.5 - 18 * F / 7,800 ) / 10)    = 1000  @ F = 8000 Hz
 
 
 def get_spectrogram_data(frame_rate, np_frames):
@@ -98,19 +90,10 @@ def get_amplitudes(time_frame, np_spectrum, max_amp):
 def get_silence_status(time_frame, np_freqs):
     """Determine if there is silence at the given time frame."""
     # Silence:
-    #   The amplitude at every frequency is below a defined threshold.
-    #   The peak amplitude range is below that of turbulence.
-    #       NB: Some kinds of white noise would also probably qualify here.
-    #valid_amps = []
-    #for i, freq in enumerate(np_freqs):
-    #    if freq > VOICE_MIN_FREQ:
-    #        valid_amps.append(time_frame['amplitudes'][i])
-    #peak_amps_range = utils.get_peak_amps_range(valid_amps)
-
+    #   TODO: rewrite description of calculation.
     amps_list = [a for a in time_frame['amplitudes']]
     amps_range, amps_sum, amps_avg, amps_std_dev = utils.get_list_stats(amps_list)
-    #if peak_amps_range < SILENCE_PEAK_AMP_RANGE_MAX:
-    if amps_avg < 300 and amps_std_dev < 3000:
+    if amps_avg < AMPS_AVG_MIN and amps_std_dev < TURB_AMPS_DEV_MIN:
         time_frame['silence'] = True
     else:
         time_frame['silence'] = False
@@ -119,12 +102,15 @@ def get_silence_status(time_frame, np_freqs):
 def get_vocalization_status(time_frame, np_freqs):
     """Determine if there is vocalization at the given time frame."""
     # "Vocalization" means "sufficient amplitude in the F1-F3 frequency range".
-    valid_amps = []
-    for i, freq in enumerate(np_freqs):
-        if freq > VOICE_MIN_FREQ and freq < VOICE_MAX_FREQ:
-            valid_amps.append(time_frame['amplitudes'][i])
-    peak_amps_range = utils.get_peak_amps_range(valid_amps)
-    if peak_amps_range > VOICE_PEAK_AMP_RANGE_MIN:
+    #valid_amps = []
+    #for i, freq in enumerate(np_freqs):
+    #    if freq > VOICE_MIN_FREQ and freq < VOICE_MAX_FREQ:
+    #        valid_amps.append(time_frame['amplitudes'][i])
+    #peak_amps_range = utils.get_peak_amps_range(valid_amps)
+    #if peak_amps_range > VOICE_PEAK_AMP_RANGE_MIN:
+    amps_list = [a for a in time_frame['amplitudes']]
+    amps_range, amps_sum, amps_avg, amps_std_dev = utils.get_list_stats(amps_list)
+    if amps_avg < AMPS_AVG_MIN and amps_std_dev > TURB_AMPS_DEV_MIN:
         time_frame['vocalization'] = True
     else:
         time_frame['vocalization'] = False
@@ -137,6 +123,7 @@ def get_turbulence_status(time_frame, np_freqs):
     # "Turbulence" means "sufficient and consistent amplitude in the >2500 Hz
     #   frequency range for a sufficient number of frequencies".
     #valid_amps = {}
+    #TURB_MIN_FREQ = 5500   # arbitrary; turbulence can start at any frequency.
     #for i, freq in enumerate(np_freqs):
     #    if freq > TURB_MIN_FREQ:
     #        valid_amps[i] = time_frame['amplitudes'][i]
@@ -144,69 +131,33 @@ def get_turbulence_status(time_frame, np_freqs):
     # "Turbulence" means "sufficient amplitude with std. dev. of amplitudes < 3000".
     valid_amps = {i: a for i, a in enumerate(time_frame['amplitudes'])}
     amps_list = [a for a in valid_amps.values()]
-    #amps_range = len(amps_list)
-    #amps_sum = np.sum(amps_list)
-    #amps_avg = amps_sum / amps_range
-    #amps_std_dev = np.std(amps_list)
     amps_range, amps_sum, amps_avg, amps_std_dev = utils.get_list_stats(amps_list)
     M_sum = 0
     for i, a in valid_amps.items():
         M_sum += np_freqs[i] * a # distance measured from bottom, 0 Hz
     amps_Fmid = M_sum / amps_sum
-    peaks = utils.get_peak_amps(amps_list)
-    peaks_std_dev = np.std(peaks)
-    peak_amps_range = utils.get_peak_amps_range(amps_list)
-    print(f"{time_frame['index']}:\tamps avg: {round(amps_avg)}\tamps Fmid: {round(amps_Fmid)}\tamps stdev: {round(amps_std_dev)}\tpeaks stdev: {round(peaks_std_dev)}\tpeaks range: {round(peak_amps_range)}")
-    #if TURB_PEAK_AMP_RANGE_MIN < peak_amps_range < TURB_PEAK_AMP_RANGE_MAX and a_avg > 10:
-    if amps_avg > 300 and amps_std_dev < 3000 and peaks_std_dev < 4000:
+    print(f"{time_frame['index']}:\tamps avg: {round(amps_avg)}\tamps Fmid: {round(amps_Fmid)}\tamps stdev: {round(amps_std_dev)}")
+    if amps_avg > AMPS_AVG_MIN and amps_std_dev < TURB_AMPS_DEV_MIN:
         time_frame['turbulence'] = True
     else:
         time_frame['turbulence'] = False
     return time_frame
 
 def get_formants(time_frame, np_freqs):
-    """Collect up to two formant frequencies found in the given time frame."""
-    '''
-    # Find top two frequencies by highest amplitude below VOICE_MAX_FREQ.
-    time_frame['formants'] = []
-    # List all amplitudes in vocalization range.
-    amps = {}
-    for i, freq in enumerate(np_freqs):
-        if freq > VOICE_MIN_FREQ and freq < VOICE_MAX_FREQ:
-            amps[i] = time_frame['amplitudes'][i]
-        else:
-            amps[i] = None
-    # Find peak amplitudes.
-    peaks = {}
-    last_amp = 0
-    for i, amp in amps.items():
-        if amp and last_amp and not peaks.get(i-2) \
-            and last_amp > utils.get_min_amp(np_freqs[i]) and amp < last_amp:
-            peaks[i-1] = last_amp
-        last_amp = amp
-    for i, amp in peaks.items():
-        time_frame['formants'].append(round(np_freqs[i]))
-    '''
+    """Collect all lower formant frequencies found in the given time frame."""
     time_frame['formants'] = []
     valid_amps = []
     for i, freq in enumerate(np_freqs):
         if VOICE_MIN_FREQ < freq < VOICE_MAX_FREQ:
             amp = time_frame['amplitudes'][i]
             amp_min = utils.get_min_amp(freq)
+            print(amp_min, amp)
             if amp > amp_min:
                 valid_amps.append(amp)
     peaks = utils.get_peak_amps(valid_amps)
-    #print(peaks)
-    # To get formants, choose only 3 highest peaks.
-    #top_amps = []
-    #while len(top_amps) < 3 and len(peaks) > 0:
-    #    top_amps.append(max(peaks))
-    #    peaks.remove(max(peaks))
-    top_amps = peaks.copy()
-    # Get corresponding frequency of each top3 amplitude.
+    # Get corresponding frequency of each peak amplitude.
     for i, freq in enumerate(np_freqs):
-        if time_frame['amplitudes'][i] in top_amps:
-            #print(f"{freq}\t{time_frame['amplitudes'][i]}")
+        if time_frame['amplitudes'][i] in peaks:
             time_frame['formants'].append(round(freq))
     return time_frame
 
